@@ -1,13 +1,15 @@
 use std::collections::HashMap;
 use fizzy_commons::redis::client::create_client;
 use log::{info, debug};
-use redis::{Commands, RedisResult, Value};
+use redis::{Commands , RedisResult, Value};
 use redis::Value::Bulk;
 use serde::__private::de;
 use crate::structs::constants::get_year_encodings;
 
-const VIN_STATUS_ID: i32 = 7;
 const MAKE_STATUS_ID: i32 = 3;
+const DESCRIPTION_STATUS_ID: i32 = 9;
+const VIN_STATUS_ID: i32 = 7;
+const MODEL_STATUS_ID: i32 = 5;
 const VIN_YEAR_DIGIT: i32 = 9; // 10th digit of the VIN
 
 pub struct VinInformation{
@@ -106,6 +108,8 @@ impl Default for TrackerStep{
 pub trait Source{
 
     fn get_vin(reference: &str) -> Option<String>;
+    fn get_description(reference: &str) -> Option<String>;
+    fn get_attached_files(reference: &str) -> Option<String>;
 
     fn decode_year(vin: &str) -> (String, String){
 
@@ -124,12 +128,14 @@ pub trait Source{
     }
 
     fn get_make(tracker_id: &str) -> Option<String>;
+
+
+    fn get_model(tracker_id: &str) -> Option<String>; 
 }
 
 #[derive(Clone)]
 pub struct WhatsappSource{
 }
-
 impl Source for WhatsappSource {
     fn get_vin(tracker_id: &str) -> Option<String> {
 
@@ -217,9 +223,89 @@ impl Source for WhatsappSource {
             }
 
         }
-
-
        make 
+    }
+
+    fn get_description(tracker_id: &str) -> Option<String>{
+
+        let client = create_client().expect("Redis client couldnt be created.");
+        let mut con = client.get_connection().unwrap();
+
+        let res:RedisResult<Value> = redis::cmd("FT.SEARCH")
+            .arg("trackerSteps")
+            .arg(format!("@tracker_id:{} @status:{}", tracker_id, DESCRIPTION_STATUS_ID))
+            .query(&mut con);
+
+        debug!("{:?}", res.as_ref().unwrap());
+
+        let mut description: Option<String> = None;
+        for val in res.unwrap().as_sequence().unwrap(){
+            if let Bulk(register) = val {
+                let step = TrackerStep::default()
+                    .parse_from_redis(register);
+
+                debug!("step value: {}", &step.value);
+                description = Some(step.value);
+                
+            }
+
+        }
+       description 
+    }
+
+
+    fn get_attached_files(tracker_id: &str) -> Option<String>{
+
+        let client = create_client().expect("Redis client couldnt be created.");
+        let mut con = client.get_connection().unwrap();
+
+        let res:RedisResult<Value> = redis::cmd("FT.SEARCH")
+            .arg("trackerSteps")
+            .arg(format!("@tracker_id:{} @status:{}", tracker_id, DESCRIPTION_STATUS_ID))
+            .query(&mut con);
+
+        debug!("{:?}", res.as_ref().unwrap());
+
+        let mut attached_files: Option<String> = None;
+        for val in res.unwrap().as_sequence().unwrap(){
+            if let Bulk(register) = val {
+                let step = TrackerStep::default()
+                    .parse_from_redis(register);
+
+                debug!("step value: {}", &step.attached_files);
+                attached_files = Some(step.attached_files);
+                
+            }
+
+        }
+       attached_files 
+    }
+
+    fn get_model(tracker_id: &str) -> Option<String>{
+
+        let client = create_client().expect("Redis client couldnt be created.");
+        let mut con = client.get_connection().unwrap();
+
+        let res:RedisResult<Value> = redis::cmd("FT.SEARCH")
+            .arg("trackerSteps")
+            .arg(format!("@tracker_id:{} @status:{}", tracker_id, MAKE_STATUS_ID))
+            .query(&mut con);
+
+        debug!("{:?}", res.as_ref().unwrap());
+
+        let mut model: Option<String> = None;
+        for val in res.unwrap().as_sequence().unwrap(){
+            if let Bulk(register) = val {
+                let step = TrackerStep::default()
+                    .parse_from_redis(register);
+
+                debug!("step value: {}", &step.value);
+                model = Some(step.value);
+                
+            }
+
+        }
+       model 
     }
 }
     
@@ -231,12 +317,28 @@ impl Source for WhatsappSource {
 pub mod part_request {
     use log::error;
     use crate::structs::Source;
+    use crate::redis::part_register::{set_request_vehicle_information, set_request_details};
 
     pub struct VehicleData{
         make: Option<String>,
         model: Option<String>,
         vin: Option<String>,
         year: Option<String>,
+    }
+
+    impl VehicleData{
+        pub fn get_redis_fields(&self) -> Vec<(String, String)>{
+            let mut vec: Vec<(String, String)> = vec![];
+            
+            vec.push((String::from("make"), String::from(self.make.as_ref().unwrap())));
+
+            vec.push((String::from("model"), String::from(self.model.as_ref().unwrap())));
+
+            vec.push((String::from("year"), String::from(self.year.as_ref().unwrap())));
+
+            vec.push((String::from("vin"), String::from(self.vin.as_ref().unwrap())));
+            vec
+        }
     }
 
 
@@ -264,6 +366,10 @@ pub mod part_request {
 
     impl<T: Source> VehicleDataBuilder<T> {
 
+        pub fn build(self) -> VehicleData{
+            VehicleData { make: self.make, model: self.model, vin: self.vin, year: self.year }
+        }
+
         pub fn vin(&mut self, reference: &str) -> &mut Self{
             let vin = T::get_vin(reference);
             if vin.is_none(){
@@ -279,6 +385,15 @@ pub mod part_request {
                 error!("make wasnt found");
             }
             self.make = make;
+            self
+        }
+
+        pub fn model(&mut self, tracker_id: &str) -> &mut Self{
+            let model = T::get_model(tracker_id);
+            if model.is_none(){
+                error!("model wasnt found");
+            }
+            self.model = model;
             self
         }
 
@@ -300,6 +415,7 @@ pub mod part_request {
         pub origin: String,
         pub origin_reference: String,
         pub timestamp: String,
+        pub vehicle: Option<VehicleData>,
     }
 
     impl PartRequest{
@@ -309,6 +425,7 @@ pub mod part_request {
                 origin: origin.to_string(),
                 origin_reference: origin_reference.to_string(),
                 timestamp: timestamp.to_string(),
+                vehicle: None
             }
         }
 
@@ -320,6 +437,79 @@ pub mod part_request {
                 (String::from("timestamp"), String::from(&self.timestamp)),
             ]
         }
+
+
+        pub fn set_request_details(&self,request_details: RequestDetails) {
+         let data = set_request_details(&self.id,request_details); 
+        }
+
+        pub fn set_vehicle_data(&self,vehicle_data: VehicleData) {
+         let data = set_request_vehicle_information(&self.id,vehicle_data); 
+        }
+    }
+
+    pub struct RequestDetails{
+        pub description: Option<String>,
+        pub attached_files: Option<String>,
+    }
+
+    impl RequestDetails{
+        pub fn new()-> RequestDetails{
+            RequestDetails { description:None, attached_files: None }
+        }
+
+
+        pub fn get_redis_fields(&self) -> Vec<(String, String)>{
+            let mut vec: Vec<(String, String)> = vec![];
+
+            vec.push((String::from("description"), String::from(self.description.as_ref().unwrap())));
+            vec.push((String::from("attached_files"), String::from(self.attached_files.as_ref().unwrap())));
+            vec
+        }
+    }
+
+    pub struct RequestDetailsBuilder<T>{
+        pub description: Option<String>,
+        pub attached_files: Option<String>,
+        pub source: Option<T>
+    }
+
+    impl<T> Default for RequestDetailsBuilder<T>{
+        fn default() -> Self {
+           RequestDetailsBuilder { description: None, attached_files: None, source: None}         
+        }
+    }
+
+    impl<T: Source> RequestDetailsBuilder<T>{
+
+        pub fn description(&mut self, reference: &str) -> &mut Self{
+            let desc = T::get_description(reference);
+
+            if desc.is_none(){
+                error!("Description couldnt be found")
+            }
+
+            self.description = desc;
+            self
+
+        }
+
+        pub fn attached_files(&mut self, reference: &str) -> &mut Self{
+            let attached_files = T::get_attached_files(reference);
+
+            if attached_files.is_none(){
+                error!("Attached files couldnt be found")
+            }
+
+            self.attached_files = attached_files;
+            self
+
+        }
+
+        pub fn build(self) -> RequestDetails{
+            RequestDetails { description: self.description, attached_files: self.attached_files }
+        }
+
     }
 
 }

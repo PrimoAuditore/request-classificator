@@ -3,7 +3,7 @@ use fizzy_commons::shared_structs::{MessageLog, StandardResponse};
 use log::{error, debug};
 use crate::redis::part_register::create_part_request;
 
-use crate::structs::part_request::VehicleDataBuilder;
+use crate::structs::part_request::{VehicleDataBuilder, RequestDetailsBuilder};
 use crate::structs::{Source, WhatsappSource};
 
 pub fn new_request_received(notification: MessageLog){
@@ -41,12 +41,39 @@ pub fn new_request_received(notification: MessageLog){
     builder.make(&notification.register_id);
     debug!("Make: {}", builder.make.as_ref().unwrap());
 
+
+    // Get model 
+    builder.model(&notification.register_id);
+    debug!("Model: {}", builder.model.as_ref().unwrap());
+
+    // Update request vehicle data
+    let vehicle_data = builder.build();
+    part_request.set_vehicle_data(vehicle_data);
+
+    // Get description
+    let mut details_builder: RequestDetailsBuilder<WhatsappSource> = RequestDetailsBuilder::default();
+
+    details_builder.description(&notification.register_id);
+
+    debug!("Description: {}", details_builder.description.as_ref().unwrap());
+
+    // Get attached files
+
+    details_builder.attached_files(&notification.register_id);
+
+    debug!("Attached files: {}", details_builder.attached_files.as_ref().unwrap());
+
+    let details = details_builder.build();
+
+    part_request.set_request_details(details);
+
+
 }
 
 // pub fn outgoing_messages() -> Result<StandardResponse, StandardResponse>{
 //     let mut response: StandardResponse = StandardResponse::new();
 //     let mut errors = vec![];
-//     let mut references = vec![];
+//  gt   let mut references = vec![];
 //
 //
 // }
