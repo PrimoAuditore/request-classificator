@@ -1,4 +1,5 @@
 use fizzy_commons::*;
+use fizzy_commons::shared_structs::user_management::User;
 use fizzy_commons::shared_structs::{MessageLog, StandardResponse};
 use log::{error, debug};
 use crate::redis::part_register::create_part_request;
@@ -50,9 +51,9 @@ pub fn new_request_received(notification: MessageLog){
     let vehicle_data = builder.build();
     part_request.set_vehicle_data(vehicle_data);
 
-    // Get description
     let mut details_builder: RequestDetailsBuilder<WhatsappSource> = RequestDetailsBuilder::default();
 
+    // Get description
     details_builder.description(&notification.register_id);
 
     debug!("Description: {}", details_builder.description.as_ref().unwrap());
@@ -66,6 +67,10 @@ pub fn new_request_received(notification: MessageLog){
     let details = details_builder.build();
 
     part_request.set_request_details(details);
+
+    let user = User::from_phone_number(&notification.phone_number);
+
+    println!("user: {}", user.name);
 
 
 }

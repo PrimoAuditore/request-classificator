@@ -424,7 +424,7 @@ dependencies = [
 [[package]]
 name = "fizzy_commons"
 version = "0.1.0"
-source = "git+ssh://git@github.com/PrimoAuditore/fizzy-commons.git?tag=v2.0.1#8394b5913d8445641d6d67875f575113d9336893"
+source = "git+ssh://git@github.com/PrimoAuditore/fizzy-commons.git?tag=v2.1.0#f59444fdf82141e68fb45fc1c4a76c129782fc01"
 dependencies = [
  "redis",
  "serde",

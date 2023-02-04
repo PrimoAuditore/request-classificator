@@ -512,6 +512,12 @@ pub mod part_request {
 
     }
 
+    pub struct Requestor{
+        pub user_id: Option<String>,
+    }
+
+
+
 }
 
 pub mod constants{
