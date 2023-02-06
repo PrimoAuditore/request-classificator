@@ -2,9 +2,9 @@ use fizzy_commons::*;
 use fizzy_commons::shared_structs::user_management::User;
 use fizzy_commons::shared_structs::{MessageLog, StandardResponse};
 use log::{error, debug};
-use crate::redis::part_register::create_part_request;
+use crate::redis::part_register::{create_part_request, set_request_requestor};
 
-use crate::structs::part_request::{VehicleDataBuilder, RequestDetailsBuilder};
+use crate::structs::part_request::{VehicleDataBuilder, RequestDetailsBuilder, Requestor, RequestorBuilder, self};
 use crate::structs::{Source, WhatsappSource};
 
 pub fn new_request_received(notification: MessageLog){
@@ -25,7 +25,7 @@ pub fn new_request_received(notification: MessageLog){
     };
 
     // Create Part request
-    let part_request = create_part_request(origin, &notification.register_id).unwrap();
+    let mut part_request = create_part_request(origin, &notification.register_id).unwrap();
 
     // Get vin
     builder.vin(&notification.register_id);
@@ -68,9 +68,20 @@ pub fn new_request_received(notification: MessageLog){
 
     part_request.set_request_details(details);
 
-    let user = User::from_phone_number(&notification.phone_number);
+    let mut requestor_builder: RequestorBuilder<WhatsappSource> = RequestorBuilder::default();
+    let requestor = requestor_builder
+        .requestor(&notification.phone_number)
+        .build();
 
-    println!("user: {}", user.name);
+    if requestor.is_err() {
+        error!("Error obtaining requestor");
+
+    }
+
+    part_request.set_requestor(requestor.unwrap())
+
+
+    //println!("user: {}", user.name);
 
 
 }

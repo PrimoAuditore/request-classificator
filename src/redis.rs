@@ -1,7 +1,7 @@
 mod classification {}
 
 pub mod part_register {
-    use crate::structs::part_request::{PartRequest, VehicleData, RequestDetails};
+    use crate::structs::part_request::{PartRequest, VehicleData, RequestDetails, Requestor};
     use fizzy_commons::redis::client::create_client;
     use log::{error, debug};
     use redis::{Commands, RedisResult, Value};
@@ -37,7 +37,7 @@ pub mod part_register {
 
     pub fn set_request_vehicle_information(
         part_request_id: &str,
-        vehicle_data: VehicleData,
+        vehicle_data: &VehicleData,
     ) -> Result<(), String> {
         // Get Client
         let client = create_client().unwrap();
@@ -61,7 +61,7 @@ pub mod part_register {
 
     pub fn set_request_details(
         part_request_id: &str,
-        details: RequestDetails,
+        details: &RequestDetails,
     ) -> Result<(), String> {
         // Get Client
         let client = create_client().unwrap();
@@ -81,6 +81,29 @@ pub mod part_register {
 
         debug!("Request details added succesfully {}", &key);
         Ok(())
+    }
+
+
+    pub fn set_request_requestor(part_request_id: &str, requestor: &Requestor) -> Result<(), String>{
+
+        let client = create_client().unwrap();
+        let mut con = client.get_connection().unwrap();
+
+        let redis_fields = requestor.get_redis_fields();
+
+        // Key
+        let key = format!("part-request:{}:requestor", part_request_id);
+
+        let res: RedisResult<Value> = con.hset_multiple(&key, &redis_fields);
+
+        if res.is_err() {
+            error!("Error adding requestor to part request: {}", res.as_ref().unwrap_err().to_string());
+            return Err(res.as_ref().unwrap_err().to_string());
+        }
+
+        debug!("Requestor added succesfully {}", &key);
+        Ok(())
+
     }
 }
 
