@@ -1,13 +1,41 @@
-use fizzy_commons::*;
-use fizzy_commons::shared_structs::user_management::User;
 use fizzy_commons::shared_structs::{MessageLog, StandardResponse};
 use log::{error, debug};
-use crate::redis::part_register::{create_part_request, set_request_requestor};
+use crate::redis::part_register::{create_part_request};
+use crate::redis::classification::get_label_childs;
 
-use crate::structs::part_request::{VehicleDataBuilder, RequestDetailsBuilder, Requestor, RequestorBuilder, self};
-use crate::structs::{Source, WhatsappSource};
+use crate::structs::part_request::{VehicleDataBuilder, RequestDetailsBuilder, RequestorBuilder};
+use crate::structs::{WhatsappSource};
+use crate::helpers::{process_new_request};
+
+pub fn new_request_received2(notification: MessageLog){
+
+    match notification.origin_system.parse::<u16>().unwrap() {
+        1 => {
+            // Selected option in the menu
+            
+        }
+        3 => {
+            // User requested part
+            let part_request = process_new_request(&notification);
+
+
+        },
+        4 => {
+            // Self call
+        }
+        _ => {
+            error!("Unexpected system");
+            panic!("Unexpected system")
+        }
+    
+    }
+}
 
 pub fn new_request_received(notification: MessageLog){
+
+    get_label_childs();
+
+
 
     let mut builder: VehicleDataBuilder<WhatsappSource> = VehicleDataBuilder::<WhatsappSource>::default();
     let mut origin = "";

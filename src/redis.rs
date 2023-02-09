@@ -1,12 +1,51 @@
-mod classification {}
+pub mod classification {
+    use crate::structs::classification::Label;
+    use fizzy_commons::redis::client::create_client;
+    use fizzy_commons::redis::search::QueryBuilder;
+
+    pub fn get_label_childs() {
+        let mut query: QueryBuilder<Vec<Label>> = QueryBuilder::default();
+
+        let base_parent = String::from("1");
+        let base_parent_field = String::from("parent");
+
+        query
+            .index("label-parent-search".to_string())
+            .arg(base_parent_field, base_parent);
+
+        let mut client = create_client().unwrap();
+        let res = query.search(&client);
+
+        if res.is_ok() {
+            println!("{res:?}");
+        } else {
+            println!("{}", res.unwrap_err().to_string())
+        }
+    }
+}
 
 pub mod part_register {
-    use crate::structs::part_request::{PartRequest, VehicleData, RequestDetails, Requestor};
+    use crate::structs::part_request::{PartRequest, RequestDetails, Requestor, VehicleData};
     use fizzy_commons::redis::client::create_client;
-    use log::{error, debug};
+    use log::{debug, error};
     use redis::{Commands, RedisResult, Value};
-    use std::error::Error;
     use std::time::{SystemTime, UNIX_EPOCH};
+
+    pub fn append_label(part_request_id: &str, label_id: &str) -> Result<Value, String> {
+        let client = create_client().unwrap();
+        let mut con = client.get_connection().unwrap();
+
+        // Key
+        let key = format!("part-request:{}:labels", part_request_id);
+
+        let res: RedisResult<Value> = con.sadd(key, label_id);
+
+        if res.is_err(){
+            // TODO
+        }
+
+        Ok(res.unwrap())
+    }
 
     pub fn create_part_request(origin: &str, reference: &str) -> Result<PartRequest, String> {
         let client = create_client().unwrap();
@@ -83,9 +122,10 @@ pub mod part_register {
         Ok(())
     }
 
-
-    pub fn set_request_requestor(part_request_id: &str, requestor: &Requestor) -> Result<(), String>{
-
+    pub fn set_request_requestor(
+        part_request_id: &str,
+        requestor: &Requestor,
+    ) -> Result<(), String> {
         let client = create_client().unwrap();
         let mut con = client.get_connection().unwrap();
 
@@ -97,18 +137,26 @@ pub mod part_register {
         let res: RedisResult<Value> = con.hset_multiple(&key, &redis_fields);
 
         if res.is_err() {
-            error!("Error adding requestor to part request: {}", res.as_ref().unwrap_err().to_string());
+            error!(
+                "Error adding requestor to part request: {}",
+                res.as_ref().unwrap_err().to_string()
+            );
             return Err(res.as_ref().unwrap_err().to_string());
         }
 
         debug!("Requestor added succesfully {}", &key);
         Ok(())
-
     }
 }
 
 #[cfg(test)]
 mod classification_test {
+
+    // Passes if fails when trying to add a label that is already added.
+    #[test]
+    fn already_added_label(){
+        assert!(false)
+    }
 
     // Checks the index search returns a parseable label struct
     #[test]

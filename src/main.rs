@@ -23,7 +23,7 @@ async fn main() -> std::io::Result<()> {
 
 #[post("/incoming")]
 async fn incoming_messages(log: web::Json<MessageLog>) -> impl Responder {
-    let response = handlers::new_request_received(log.0);
+    let response = handlers::new_request_received2(log.0);
 
     // match response {
     //     Ok(response) => HttpResponse::Ok().body(serde_json::to_string(&response).unwrap()),

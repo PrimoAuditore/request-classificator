@@ -3,8 +3,7 @@ use fizzy_commons::redis::client::create_client;
 use fizzy_commons::shared_structs::user_management::User;
 use log::{debug, info};
 use redis::Value::Bulk;
-use redis::{Commands, RedisResult, Value};
-use serde::__private::de;
+use redis::{RedisResult, Value};
 use std::collections::HashMap;
 
 const MAKE_STATUS_ID: i32 = 3;
@@ -18,12 +17,6 @@ pub struct VinInformation {
     model: String,
     year: String,
     plant: String,
-}
-
-pub struct Label {
-    pub id: String,
-    pub name: String,
-    pub parent: String,
 }
 
 #[derive(Clone, Debug)]
@@ -327,6 +320,132 @@ impl Source for WhatsappSource {
             }
         }
         model
+    }
+}
+
+pub mod classification {
+    use redis::{from_redis_value, FromRedisValue, RedisResult};
+    use redis::{RedisError, Value};
+    use std::collections::{HashMap, HashSet};
+    use std::io::ErrorKind;
+
+    #[derive(Debug)]
+    pub struct Label {
+        pub id: String,
+        pub name: String,
+        pub parent: String,
+    }
+
+    impl Label {
+        pub fn new(id: &str, name: &str, parent: &str) -> Label {
+            Label {
+                id: String::from(id),
+                name: String::from(name),
+                parent: String::from(parent),
+            }
+        }
+    }
+
+    impl FromRedisValue for Label {
+        fn from_redis_values(items: &[Value]) -> redis::RedisResult<Vec<Self>> {
+            let mut parsed_values: Vec<Self> = vec![];
+
+            for item in items {
+                if let Value::Bulk(val) = item {
+                    let value: RedisResult<Label> = from_redis_value(&Value::Bulk(vec![item.clone()]));
+
+                    if value.is_err() {
+                        return Err(RedisError::from(std::io::Error::new(
+                            ErrorKind::Other,
+                            "Value couldn't be parsed",
+                        )));
+                    }
+
+                    parsed_values.push(value.unwrap())
+                } else {
+                    // TODO: implement logging for library
+                }
+            }
+
+            if parsed_values.is_empty() {
+                return Err(RedisError::from(std::io::Error::new(
+                    ErrorKind::Other,
+                    "No values to parse",
+                )));
+            }
+
+            Ok(parsed_values)
+        }
+
+        fn from_redis_value(v: &redis::Value) -> redis::RedisResult<Self> {
+            if let Value::Bulk(bulk) = v {
+                for value in bulk {
+                    if let Value::Bulk(register) = value {
+                        let mut fields: HashMap<String, String> = HashMap::new();
+                        let mut verification_set: HashSet<String> = HashSet::new();
+
+                        // Parse bulk into key-val hashmap
+                        let mut param_name = "".to_string();
+                        for (index, elem) in register.iter().enumerate() {
+                            let string_val = match elem {
+                                Value::Data(val) => String::from_utf8(val.clone()),
+                                _ => {
+                                    return Err(RedisError::from(std::io::Error::new(
+                                        ErrorKind::Other,
+                                        "Unexpected Value type received",
+                                    )));
+                                }
+                            }
+                            .unwrap();
+
+                            if index % 2 == 0 {
+                                param_name = string_val;
+                                verification_set.insert(param_name.clone());
+                            } else {
+                                fields.insert(param_name.to_string(), string_val);
+                            }
+                        }
+
+                        let mut label: Label = Label::new("", "", "");
+
+                        // Verifiy set is empty
+                        label.id = fields.get("id").expect("Id field not found").to_string();
+                        verification_set.remove("id");
+
+                        label.name = fields
+                            .get("name")
+                            .expect("name field not found")
+                            .to_string();
+                        verification_set.remove("name");
+
+                        label.parent = fields
+                            .get("parent")
+                            .expect("last_name field not found")
+                            .to_string();
+                        verification_set.remove("parent");
+
+                        if !verification_set.is_empty() {
+                            return Err(RedisError::from(std::io::Error::new(
+                                ErrorKind::Other,
+                                "Aditional unexpected values found",
+                            )));
+                        }
+
+                        return Ok(label);
+                    }
+                }
+            } else {
+                // TODO: find better way to represent conversion error
+                return Err(RedisError::from(std::io::Error::new(
+                    ErrorKind::Other,
+                    "Error converting struct from redis value",
+                )));
+            }
+            Err(RedisError::from(std::io::Error::new(
+                ErrorKind::Other,
+                "Not found",
+            )))
+        }
     }
 }
 
