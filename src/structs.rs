@@ -326,10 +326,12 @@ impl Source for WhatsappSource {
 pub mod classification {
     use redis::{from_redis_value, FromRedisValue, RedisResult};
     use redis::{RedisError, Value};
+    use serde::{Deserialize, Serialize};
     use std::collections::{HashMap, HashSet};
     use std::io::ErrorKind;
+    use crate::redis::common::key_exists;
 
-    #[derive(Debug)]
+    #[derive(Debug, Serialize, Deserialize)]
     pub struct Label {
         pub id: String,
         pub name: String,
@@ -344,6 +346,11 @@ pub mod classification {
                 parent: String::from(parent),
             }
         }
+
+        pub fn exists(id: &str) -> bool{
+            let key = format!("part-label:{}", id);
+            key_exists(&key)
+        }
     }
 
     impl FromRedisValue for Label {
@@ -352,7 +359,8 @@ pub mod classification {
 
             for item in items {
                 if let Value::Bulk(val) = item {
-                    let value: RedisResult<Label> = from_redis_value(&Value::Bulk(vec![item.clone()]));
+                    let value: RedisResult<Label> =
+                        from_redis_value(&Value::Bulk(vec![item.clone()]));
 
                     if value.is_err() {
                         return Err(RedisError::from(std::io::Error::new(
@@ -453,10 +461,19 @@ pub mod part_request {
     use crate::redis::part_register::{
         set_request_details, set_request_requestor, set_request_vehicle_information,
     };
+    use crate::redis::common::key_exists;
+    use crate::structs::classification::Label;
     use crate::structs::Source;
     use fizzy_commons::shared_structs::user_management::User;
-    use log::error;
+    use log::{debug, error};
+    use redis::FromRedisValue;
+    use redis::RedisResult;
+    use redis::{RedisError, Value};
+    use serde::Serialize;
+    use std::collections::{HashMap, HashSet};
+    use std::io::ErrorKind;
 
+    #[derive(Debug, Serialize)]
     pub struct VehicleData {
         make: Option<String>,
         model: Option<String>,
@@ -562,32 +579,47 @@ pub mod part_request {
     }
 
     // PART REQUEST
+    #[derive(Debug, Serialize)]
     pub struct PartRequest {
         pub id: String,
         pub origin: String,
         pub origin_reference: String,
         pub timestamp: String,
+        pub classified: String,
         pub vehicle: Option<VehicleData>,
         pub requestor: Option<Requestor>,
         pub details: Option<RequestDetails>,
     }
 
     impl PartRequest {
-        pub fn new(id: &str, origin: &str, origin_reference: &str, timestamp: &str) -> PartRequest {
+        pub fn new(
+            id: &str,
+            origin: &str,
+            origin_reference: &str,
+            timestamp: &str,
+            classified: &str,
+        ) -> PartRequest {
             PartRequest {
                 id: id.to_string(),
                 origin: origin.to_string(),
                 origin_reference: origin_reference.to_string(),
                 timestamp: timestamp.to_string(),
+                classified: classified.to_string(),
                 vehicle: None,
                 requestor: None,
                 details: None,
             }
         }
 
+        pub fn exists(id: &str) -> bool{
+            let key = format!("part-request:{}", id);
+            key_exists(&key)
+        }
+
         pub fn get_redis_list(&self) -> Vec<(String, String)> {
             vec![
                 (String::from("id"), String::from(&self.id)),
+                (String::from("classified"), String::from(&self.classified)),
                 (String::from("origin"), String::from(&self.origin)),
                 (
                     String::from("origin_reference"),
@@ -613,6 +645,119 @@ pub mod part_request {
         }
     }
 
+    impl FromRedisValue for PartRequest {
+        fn from_redis_values(items: &[redis::Value]) -> redis::RedisResult<Vec<Self>> {
+            let mut parsed_values: Vec<Self> = vec![];
+
+            for item in items {
+                if let Value::Bulk(val) = item {
+                    let value: RedisResult<Self> =
+                        Self::from_redis_value(&Value::Bulk(vec![item.clone()]));
+
+                    if value.is_err() {
+                        error!(
+                            "Value couldn't be parsed: {}",
+                            value.as_ref().unwrap_err().to_string()
+                        );
+                        return Err(RedisError::from(std::io::Error::new(
+                            ErrorKind::Other,
+                            format!(
+                                "Value couldn't be parsed: {}",
+                                value.as_ref().unwrap_err().to_string()
+                            ),
+                        )));
+                    }
+
+                    parsed_values.push(value.unwrap())
+                } else {
+                    // TODO: implement logging for library
+                }
+            }
+
+            Ok(parsed_values)
+        }
+        fn from_redis_value(v: &redis::Value) -> RedisResult<Self> {
+            if let Value::Bulk(bulk) = v {
+                for value in bulk {
+                    if let Value::Bulk(register) = value {
+                        let mut fields: HashMap<String, String> = HashMap::new();
+                        let mut verification_set: HashSet<String> = HashSet::new();
+
+                        // Parse bulk into key-val hashmap
+                        let mut param_name = "".to_string();
+                        for (index, elem) in register.iter().enumerate() {
+                            let string_val = match elem {
+                                Value::Data(val) => String::from_utf8(val.clone()),
+                                _ => {
+                                    panic!("Unexpected value")
+                                }
+                            }
+                            .unwrap();
+
+                            if index % 2 == 0 {
+                                param_name = string_val;
+                                verification_set.insert(param_name.clone());
+                            } else {
+                                fields.insert(param_name.to_string(), string_val);
+                            }
+                        }
+
+                        let mut request: PartRequest = PartRequest::new("", "", "", "", "");
+                        // Verifiy set is empty
+
+                        request.id = fields.get("id").expect("Id field not found").to_string();
+                        verification_set.remove("id");
+
+                        request.origin = fields
+                            .get("origin")
+                            .expect("origin field not found")
+                            .to_string();
+                        verification_set.remove("origin");
+
+                        request.origin_reference = fields
+                            .get("origin_reference")
+                            .expect("Origin reference field not found")
+                            .to_string();
+                        verification_set.remove("origin_reference");
+
+                        request.timestamp = fields
+                            .get("timestamp")
+                            .expect("timestamp field not found")
+                            .to_string();
+                        verification_set.remove("timestamp");
+
+                        request.timestamp = fields
+                            .get("classified")
+                            .expect("classified field not found")
+                            .to_string();
+                        verification_set.remove("classified");
+
+                        if !verification_set.is_empty() {
+                            error!("Aditional unexpected values found {:?}", verification_set);
+                            return Err(RedisError::from(std::io::Error::new(
+                                ErrorKind::Other,
+                                "Aditional unexpected values found",
+                            )));
+                        }
+
+                        return Ok(request);
+                    }
+                }
+            } else {
+                // TODO: find better way to represent conversion error
+                return Err(RedisError::from(std::io::Error::new(
+                    ErrorKind::Other,
+                    "Error converting struct from redis value",
+                )));
+            }
+            Err(RedisError::from(std::io::Error::new(
+                ErrorKind::Other,
+                "Not found",
+            )))
+        }
+    }
+
+    #[derive(Debug, Serialize)]
     pub struct RequestDetails {
         pub description: Option<String>,
         pub attached_files: Option<String>,
@@ -642,6 +787,7 @@ pub mod part_request {
     }
 
     // Requestor
+    #[derive(Debug, Serialize)]
     pub struct Requestor {
         pub user_id: String,
     }

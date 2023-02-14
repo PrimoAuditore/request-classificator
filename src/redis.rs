@@ -1,12 +1,80 @@
 pub mod classification {
     use crate::structs::classification::Label;
+    use crate::structs::part_request::PartRequest;
     use fizzy_commons::redis::client::create_client;
     use fizzy_commons::redis::search::QueryBuilder;
+    use log::{error,debug};
+    use redis::{Commands, RedisResult, Value};
 
-    pub fn get_label_childs() {
+    pub fn get_pending_classification_requests() -> Result<Vec<PartRequest>, String> {
+        // TODO: Think on a concurrent solution
+        let mut query: QueryBuilder<Vec<PartRequest>> = QueryBuilder::default();
+
+        query
+            .index("request-search".to_string())
+            .arg("classified".to_string(), "PENDING".to_string());
+
+        let mut client = create_client().unwrap();
+        let res = query.search(&client);
+
+        if res.is_err() {
+            let error = format!(
+                "Error obtaining pending requests: {}",
+                res.as_ref().unwrap_err().to_string()
+            );
+            return Err(error);
+        }
+
+        Ok(res.unwrap())
+    }
+
+    pub fn append_label(request_id: &str, label_code: &str) -> Result<(), String> {
+        let client = create_client().unwrap();
+        let mut con = client.get_connection().unwrap();
+
+        let key = format!("part-request:{request_id}:labels");
+
+        let res: RedisResult<Value> = con.sadd(key, label_code);
+
+        if res.is_err() {
+            let err_msg = format!("Error appending label: {}", res.as_ref().unwrap_err());
+            error!("{}", &err_msg);
+            return Err(err_msg)
+        }
+
+        Ok(())
+    }
+
+    pub fn remove_label(request_id: &str, label_code: &str) -> Result<(), String>{
+        let client = create_client().unwrap();
+        let mut con = client.get_connection().unwrap();
+
+        let key = format!("part-request:{request_id}:labels");
+
+        let res: RedisResult<Value> = con.srem(key, label_code);
+
+        if res.is_err() {
+            let err_msg = format!("Error removing label: {}", res.as_ref().unwrap_err());
+            error!("{}", &err_msg);
+            return Err(err_msg)
+        }
+
+        let res2 = res.unwrap();
+        if let Value::Int(code) = res2 {
+            if code != 1 {
+                let err_msg = format!("Error removing label, verify that label is assigned to request");
+                error!("{}", &err_msg);
+                return Err(err_msg)
+            }
+        };
+
+        Ok(())
+    }
+
+    pub fn get_label_childs(label_id: &str) -> Result<Vec<Label>, String> {
         let mut query: QueryBuilder<Vec<Label>> = QueryBuilder::default();
 
-        let base_parent = String::from("1");
+        let base_parent = String::from(label_id);
         let base_parent_field = String::from("parent");
 
         query
@@ -16,10 +84,66 @@ pub mod classification {
         let mut client = create_client().unwrap();
         let res = query.search(&client);
 
-        if res.is_ok() {
-            println!("{res:?}");
+        if res.is_err(){
+            return Err(res.unwrap_err().to_string())
+        }
+
+        Ok(res.unwrap())
+    }
+}
+
+pub mod common {
+    use fizzy_commons::redis::client::create_client;
+    use log::{debug, error};
+    use redis::Commands;
+    use redis::RedisError;
+    use redis::RedisResult;
+    use redis::Value;
+
+    pub fn key_exists(key: &str) -> bool{
+        let client = create_client().unwrap();
+        let mut con = client.get_connection().unwrap();
+
+        let res: RedisResult<Value> = con.exists(key);
+
+        match res.unwrap() {
+            Value::Int(response_code) => {
+                response_code == 1
+            }
+            _ => {
+                error!("Unexpected response type received");
+                panic!("Unexpected response type received")
+            }
+        }
+    }
+
+    pub fn get_user_mode(phone_number: &str) -> Result<u16, String> {
+        let client = create_client().unwrap();
+        let mut con = client.get_connection().unwrap();
+
+        let mode: RedisResult<String> = con.hget(format!("selected-mode:{}", phone_number), "mode");
+
+        if mode.is_err() {
+            let is_nil = is_nil(mode.as_ref().unwrap_err());
+
+            if is_nil {
+                error!("Key has no value");
+                return Err("Key has no value".to_string());
+            } else {
+                error!("{}", mode.as_ref().unwrap_err().to_string());
+                return Err(String::from("Other error"));
+            };
+        }
+
+        let parsed_mode = mode.unwrap().parse::<u16>().unwrap();
+        Ok(parsed_mode)
+    }
+
+    pub fn is_nil(error: &RedisError) -> bool {
+        if error.to_string().contains("response was nil") {
+            true
         } else {
-            println!("{}", res.unwrap_err().to_string())
+            false
         }
     }
 }
@@ -40,7 +164,7 @@ pub mod part_register {
 
         let res: RedisResult<Value> = con.sadd(key, label_id);
 
-        if res.is_err(){
+        if res.is_err() {
             // TODO
         }
 
@@ -61,7 +185,8 @@ pub mod part_register {
             Err(_) => panic!("SystemTime before UNIX EPOCH!"),
         };
 
-        let part_request = PartRequest::new(&uuid, origin, reference, timestamp.as_str());
+        let part_request =
+            PartRequest::new(&uuid, origin, reference, timestamp.as_str(), "PENDING");
         let redis_fields = part_request.get_redis_list();
 
         let res: RedisResult<Value> = con.hset_multiple(request_id, &redis_fields);
@@ -154,7 +279,7 @@ mod classification_test {
 
     // Passes if fails when trying to add a label that is already added.
     #[test]
-    fn already_added_label(){
+    fn already_added_label() {
         assert!(false)
     }
 

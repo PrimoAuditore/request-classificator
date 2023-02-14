@@ -1,27 +1,36 @@
-use crate::structs::{WhatsappSource};
+use crate::structs::WhatsappSource;
 use fizzy_commons::shared_structs::MessageLog;
-use log::{error, debug};
+use log::{debug, error};
 
-use crate::structs::part_request::{VehicleDataBuilder,RequestDetailsBuilder,RequestorBuilder, PartRequest};
 use crate::redis::part_register::create_part_request;
+use crate::structs::part_request::{
+    PartRequest, RequestDetailsBuilder, RequestorBuilder, VehicleDataBuilder,
+};
 
-
-pub fn whatsapp_reference_exists(tracker_id: &str) -> bool{
+pub fn whatsapp_reference_exists(tracker_id: &str) -> bool {
     false
 }
 
-
-fn set_request_details(part_request:&mut PartRequest, notification: &MessageLog) -> Result<(), String>{
-
-    let mut details_builder: RequestDetailsBuilder<WhatsappSource> = RequestDetailsBuilder::default();
+fn set_request_details(
+    part_request: &mut PartRequest,
+    notification: &MessageLog,
+) -> Result<(), String> {
+    let mut details_builder: RequestDetailsBuilder<WhatsappSource> =
+        RequestDetailsBuilder::default();
 
     // Get description
     details_builder.description(&notification.register_id);
-    debug!("Description: {}", details_builder.description.as_ref().unwrap());
+    debug!(
+        "Description: {}",
+        details_builder.description.as_ref().unwrap()
+    );
 
     // Get attached files
     details_builder.attached_files(&notification.register_id);
-    debug!("Attached files: {}", details_builder.attached_files.as_ref().unwrap());
+    debug!(
+        "Attached files: {}",
+        details_builder.attached_files.as_ref().unwrap()
+    );
 
     // Update request details
     let details = details_builder.build();
@@ -30,8 +39,7 @@ fn set_request_details(part_request:&mut PartRequest, notification: &MessageLog)
     Ok(())
 }
 
-fn set_requestor(part_request: &mut PartRequest, notification: &MessageLog) -> Result<(), String>{
-
+fn set_requestor(part_request: &mut PartRequest, notification: &MessageLog) -> Result<(), String> {
     let mut requestor_builder: RequestorBuilder<WhatsappSource> = RequestorBuilder::default();
     let requestor = requestor_builder
         .requestor(&notification.phone_number)
@@ -39,15 +47,17 @@ fn set_requestor(part_request: &mut PartRequest, notification: &MessageLog) -> R
 
     if requestor.is_err() {
         error!("Error obtaining requestor");
-        return Err("Error obtaining requestor".to_string()) 
+        return Err("Error obtaining requestor".to_string());
     }
 
     part_request.set_requestor(requestor.unwrap());
 
     Ok(())
 }
-fn set_request_vehicle(part_request:&mut PartRequest, notification: &MessageLog) -> Result<(), String>{
-
+fn set_request_vehicle(
+    part_request: &mut PartRequest,
+    notification: &MessageLog,
+) -> Result<(), String> {
     let mut builder = VehicleDataBuilder::<WhatsappSource>::default();
 
     // Get vin
@@ -55,10 +65,10 @@ fn set_request_vehicle(part_request:&mut PartRequest, notification: &MessageLog)
 
     if builder.vin.is_none() {
         // TODO: Implement error
-        return Err(String::from("VIN couldnt be found"))
+        return Err(String::from("VIN couldnt be found"));
     }
 
-    // Get possible year 
+    // Get possible year
     builder.year();
     debug!("{}", builder.year.as_ref().unwrap());
 
@@ -66,8 +76,7 @@ fn set_request_vehicle(part_request:&mut PartRequest, notification: &MessageLog)
     builder.make(&notification.register_id);
     debug!("Make: {}", builder.make.as_ref().unwrap());
 
-
-    // Get model 
+    // Get model
     builder.model(&notification.register_id);
     debug!("Model: {}", builder.model.as_ref().unwrap());
 
@@ -78,10 +87,9 @@ fn set_request_vehicle(part_request:&mut PartRequest, notification: &MessageLog)
     Ok(())
 }
 
-pub fn process_new_request(notification: &MessageLog) -> Result<PartRequest, String>{
-
-
-    let mut builder: VehicleDataBuilder<WhatsappSource> = VehicleDataBuilder::<WhatsappSource>::default();
+pub fn process_new_request(notification: &MessageLog) -> Result<PartRequest, String> {
+    let mut builder: VehicleDataBuilder<WhatsappSource> =
+        VehicleDataBuilder::<WhatsappSource>::default();
     // Request origin
     let mut origin = "WHATSAPP";
 
@@ -91,30 +99,48 @@ pub fn process_new_request(notification: &MessageLog) -> Result<PartRequest, Str
     // Set vehicle information
     let mut res = set_request_vehicle(&mut part_request, notification);
 
-    if res.is_err(){
-        error!("{}",format!("Error setting request vehicle information: {}", res.as_ref().unwrap_err()));
-        return Err(format!("Error setting request vehicle information: {}", res.unwrap_err()))
+    if res.is_err() {
+        error!(
+            "{}",
+            format!(
+                "Error setting request vehicle information: {}",
+                res.as_ref().unwrap_err()
+            )
+        );
+        return Err(format!(
+            "Error setting request vehicle information: {}",
+            res.unwrap_err()
+        ));
     }
 
     res = set_request_details(&mut part_request, notification);
 
-    if res.is_err(){
-        error!("{}",format!("Error setting request details: {}", res.as_ref().unwrap_err()));
-        return Err(format!("Error setting request details: {}", res.unwrap_err()))
+    if res.is_err() {
+        error!(
+            "{}",
+            format!(
+                "Error setting request details: {}",
+                res.as_ref().unwrap_err()
+            )
+        );
+        return Err(format!(
+            "Error setting request details: {}",
+            res.unwrap_err()
+        ));
     }
 
     res = set_requestor(&mut part_request, notification);
 
-    if res.is_err(){
-        error!("{}",format!("Error setting requestor: {}", res.as_ref().unwrap_err()));
-        return Err(format!("Error setting requestor: {}", res.unwrap_err()))
+    if res.is_err() {
+        error!(
+            "{}",
+            format!("Error setting requestor: {}", res.as_ref().unwrap_err())
+        );
+        return Err(format!("Error setting requestor: {}", res.unwrap_err()));
     }
 
     Ok(part_request)
-
 }
-
-
 
 // pub fn determine_origin<T: Source>(origin_system: &str) -> Box<VehicleDataBuilder<T>> {
 //
@@ -151,7 +177,6 @@ mod vin_tests {
         assert!(false);
     }
 }
-
 
 #[cfg(test)]
 mod request_build {
