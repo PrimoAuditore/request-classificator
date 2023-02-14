@@ -14,11 +14,14 @@ use crate::structs::WhatsappSource;
 
 pub fn get_labels(label_id: String) -> Result<Vec<Label>, String>{
 
-    // Verify is label with specified code exists
-    let label_exists = Label::exists(&label_id);
-    if !label_exists {
-        let err = format!("Label with id '{}' doesnt exist", &label_id);
-        return Err(err);
+    // Don't verify if looking for parent label as label with id 0 doesn't exist
+    if label_id != "0"{
+        // Verify is label with specified code exists
+        let label_exists = Label::exists(&label_id);
+        if !label_exists {
+            let err = format!("Label with id '{}' doesnt exist", &label_id);
+            return Err(err);
+        }
     }
 
     // Get label which parent corresponds to label_id
