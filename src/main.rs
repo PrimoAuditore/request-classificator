@@ -1,7 +1,7 @@
 use crate::request_structs::LabelUpdate;
 use crate::structs::classification::Label;
 use actix_web::middleware::Logger;
-use actix_web::{get, post, put, delete, web, App, HttpResponse, HttpServer, Responder};
+use actix_web::{delete, get, post, put, web, App, HttpResponse, HttpServer, Responder};
 use fizzy_commons::shared_structs::MessageLog;
 use log::debug;
 
@@ -76,6 +76,17 @@ async fn append_label(path: web::Path<String>, label: web::Query<LabelUpdate>) -
         Err(err) => HttpResponse::InternalServerError().body(serde_json::to_string(&err).unwrap()),
     }
 }
+
+//#[put("/request/{request_id}/done")]
+//async fn classification_completed(path: web::Path<String>) -> impl Responder {
+//    let request_id = String::from(&path.into_inner());
+//    let response = handlers::classification_completed(request_id);
+
+//    match response {
+//        Ok(ok) => HttpResponse::Created().body(serde_json::to_string(&ok).unwrap()),
+//        Err(err) => HttpResponse::InternalServerError().body(serde_json::to_string(&err).unwrap()),
+//    }
+//}
 
 #[delete("/request/{request_id}/labels")]
 async fn remove_label(path: web::Path<String>, label: web::Query<LabelUpdate>) -> impl Responder {

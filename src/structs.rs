@@ -324,14 +324,16 @@ impl Source for WhatsappSource {
 }
 
 pub mod classification {
+    use crate::redis::classification::{get_label, get_request_labels};
+    use crate::redis::common::key_exists;
+    use log::{debug, error};
     use redis::{from_redis_value, FromRedisValue, RedisResult};
     use redis::{RedisError, Value};
     use serde::{Deserialize, Serialize};
     use std::collections::{HashMap, HashSet};
     use std::io::ErrorKind;
-    use crate::redis::common::key_exists;
 
-    #[derive(Debug, Serialize, Deserialize)]
+    #[derive(Debug, Serialize, Deserialize, Clone)]
     pub struct Label {
         pub id: String,
         pub name: String,
@@ -347,9 +349,13 @@ pub mod classification {
             }
         }
 
-        pub fn exists(id: &str) -> bool{
+        pub fn exists(id: &str) -> bool {
             let key = format!("part-label:{}", id);
             key_exists(&key)
+        }
+
+        pub fn get(id: &str) -> Self {
+            get_label(id)
         }
     }
 
@@ -386,82 +392,76 @@ pub mod classification {
         }
 
         fn from_redis_value(v: &redis::Value) -> redis::RedisResult<Self> {
-            if let Value::Bulk(bulk) = v {
-                for value in bulk {
-                    if let Value::Bulk(register) = value {
-                        let mut fields: HashMap<String, String> = HashMap::new();
-                        let mut verification_set: HashSet<String> = HashSet::new();
+            if let Value::Bulk(register) = v {
+                let mut fields: HashMap<String, String> = HashMap::new();
+                let mut verification_set: HashSet<String> = HashSet::new();
 
-                        // Parse bulk into key-val hashmap
-                        let mut param_name = "".to_string();
-                        for (index, elem) in register.iter().enumerate() {
-                            let string_val = match elem {
-                                Value::Data(val) => String::from_utf8(val.clone()),
-                                _ => {
-                                    return Err(RedisError::from(std::io::Error::new(
-                                        ErrorKind::Other,
-                                        "Unexpected Value type received",
-                                    )));
-                                }
-                            }
-                            .unwrap();
-
-                            if index % 2 == 0 {
-                                param_name = string_val;
-                                verification_set.insert(param_name.clone());
-                            } else {
-                                fields.insert(param_name.to_string(), string_val);
-                            }
-                        }
-
-                        let mut label: Label = Label::new("", "", "");
-
-                        // Verifiy set is empty
-                        label.id = fields.get("id").expect("Id field not found").to_string();
-                        verification_set.remove("id");
-
-                        label.name = fields
-                            .get("name")
-                            .expect("name field not found")
-                            .to_string();
-                        verification_set.remove("name");
-
-                        label.parent = fields
-                            .get("parent")
-                            .expect("last_name field not found")
-                            .to_string();
-                        verification_set.remove("parent");
-
-                        if !verification_set.is_empty() {
+                // Parse bulk into key-val hashmap
+                let mut param_name = "".to_string();
+                for (index, elem) in register.iter().enumerate() {
+                    let string_val = match elem {
+                        Value::Data(val) => String::from_utf8(val.clone()),
+                        _ => {
                             return Err(RedisError::from(std::io::Error::new(
                                 ErrorKind::Other,
-                                "Aditional unexpected values found",
+                                "Unexpected Value type received",
                             )));
                         }
+                    }
+                    .unwrap();
 
-                        return Ok(label);
+                    if index % 2 == 0 {
+                        param_name = string_val;
+                        verification_set.insert(param_name.clone());
+                    } else {
+                        fields.insert(param_name.to_string(), string_val);
                     }
                 }
+
+                debug!("fields: {:?}", fields);
+
+                let mut label = Label::new("", "", "");
+                // Verifiy set is empty
+                label.id = fields.get("id").expect("Id field not found").to_string();
+                verification_set.remove("id");
+
+                label.name = fields
+                    .get("name")
+                    .expect("name field not found")
+                    .to_string();
+                verification_set.remove("name");
+
+                label.parent = fields
+                    .get("parent")
+                    .expect("last_name field not found")
+                    .to_string();
+                verification_set.remove("parent");
+
+                if !verification_set.is_empty() {
+                    return Err(RedisError::from(std::io::Error::new(
+                        ErrorKind::Other,
+                        "Aditional unexpected values found",
+                    )));
+                }
+
+                debug!("Parsed label: {:?}", label);
+                return Ok(label);
             } else {
-                // TODO: find better way to represent conversion error
                 return Err(RedisError::from(std::io::Error::new(
                     ErrorKind::Other,
-                    "Error converting struct from redis value",
+                    "Unexpected redis value type",
                 )));
             }
-            Err(RedisError::from(std::io::Error::new(
-                ErrorKind::Other,
-                "Not found",
-            )))
         }
     }
 }
 
 pub mod part_request {
+    use crate::redis::common::key_exists;
     use crate::redis::part_register::{
         set_request_details, set_request_requestor, set_request_vehicle_information,
     };
-    use crate::redis::common::key_exists;
+    use crate::redis::classification::{get_request_labels};
     use crate::structs::classification::Label;
     use crate::structs::Source;
     use fizzy_commons::shared_structs::user_management::User;
@@ -611,7 +611,7 @@ pub mod part_request {
             }
         }
 
-        pub fn exists(id: &str) -> bool{
+        pub fn exists(id: &str) -> bool {
             let key = format!("part-request:{}", id);
             key_exists(&key)
         }
@@ -642,6 +642,10 @@ pub mod part_request {
         pub fn set_requestor(&mut self, requestor: Requestor) {
             let data = set_request_requestor(&self.id, &requestor);
             self.requestor = Some(requestor)
+        }
+
+        pub fn get_labels_ids(self) -> Result<Vec<Label>, String>{
+            get_request_labels(&self.id)
         }
     }
 

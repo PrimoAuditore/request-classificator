@@ -1,9 +1,11 @@
 pub mod classification {
+    use std::fmt::format;
+
     use crate::structs::classification::Label;
     use crate::structs::part_request::PartRequest;
     use fizzy_commons::redis::client::create_client;
     use fizzy_commons::redis::search::QueryBuilder;
-    use log::{error,debug};
+    use log::{debug, error};
     use redis::{Commands, RedisResult, Value};
 
     pub fn get_pending_classification_requests() -> Result<Vec<PartRequest>, String> {
@@ -39,32 +41,40 @@ pub mod classification {
         if res.is_err() {
             let err_msg = format!("Error appending label: {}", res.as_ref().unwrap_err());
             error!("{}", &err_msg);
-            return Err(err_msg)
+            return Err(err_msg);
         }
 
         Ok(())
     }
 
-    pub fn remove_label(request_id: &str, label_code: &str) -> Result<(), String>{
+    pub fn remove_label(request_id: &str, label_code: &str) -> Result<(), String> {
+        // Id 0 is a symbolic id for base labels
+        if label_code == "0" {
+            return Ok(());
+        }
+
         let client = create_client().unwrap();
         let mut con = client.get_connection().unwrap();
 
         let key = format!("part-request:{request_id}:labels");
+
+        debug!("Removing label {label_code} on key {key}");
 
         let res: RedisResult<Value> = con.srem(key, label_code);
 
         if res.is_err() {
             let err_msg = format!("Error removing label: {}", res.as_ref().unwrap_err());
             error!("{}", &err_msg);
-            return Err(err_msg)
+            return Err(err_msg);
         }
 
         let res2 = res.unwrap();
         if let Value::Int(code) = res2 {
             if code != 1 {
-                let err_msg = format!("Error removing label, verify that label is assigned to request");
+                let err_msg =
+                    format!("Code {code}, error removing label, verify that label is assigned to request");
                 error!("{}", &err_msg);
-                return Err(err_msg)
+                return Err(err_msg);
             }
         };
 
@@ -84,11 +94,55 @@ pub mod classification {
         let mut client = create_client().unwrap();
         let res = query.search(&client);
 
-        if res.is_err(){
-            return Err(res.unwrap_err().to_string())
+        if res.is_err() {
+            return Err(res.unwrap_err().to_string());
         }
 
         Ok(res.unwrap())
+    }
+
+    pub fn get_request_labels(request_id: &str) -> Result<Vec<Label>, String>{
+        let mut client = create_client().unwrap();
+        let mut con = client.get_connection().unwrap();
+        let mut list: Vec<Label> = vec![];
+
+
+        let key = format!("part-request:{request_id}:labels");
+
+        debug!("Gettings labels for {key}");
+
+        let res: RedisResult<Vec<String>> = con.smembers(key);
+        if res.is_err() {
+            let err = format!("Error getting request labels: {}", res.unwrap_err());
+            error!("{}", err);
+            return Err(err)
+        }
+
+        debug!("Found labels ids: {:?}", res.as_ref().unwrap());
+
+        for label in res.unwrap(){
+            list.push(Label::get(&label))
+        }
+
+        Ok(list)
+    }
+    pub fn get_label(id: &str) -> Label {
+        let mut client = create_client().unwrap();
+        let mut con = client.get_connection().unwrap();
+
+        let key = format!("part-label:{id}");
+
+        let res: RedisResult<Label> = con.hgetall(&key);
+
+        if res.is_err() {
+            error!(
+                "err getting label {}: {}",
+                &key,
+                res.as_ref().unwrap_err().to_string()
+            );
+        }
+
+        res.unwrap()
     }
 }
 
@@ -100,16 +154,14 @@ pub mod common {
     use redis::RedisResult;
     use redis::Value;
 
-    pub fn key_exists(key: &str) -> bool{
+    pub fn key_exists(key: &str) -> bool {
         let client = create_client().unwrap();
         let mut con = client.get_connection().unwrap();
 
         let res: RedisResult<Value> = con.exists(key);
 
         match res.unwrap() {
-            Value::Int(response_code) => {
-                response_code == 1
-            }
+            Value::Int(response_code) => response_code == 1,
             _ => {
                 error!("Unexpected response type received");
                 panic!("Unexpected response type received")

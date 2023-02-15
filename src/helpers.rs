@@ -2,13 +2,70 @@ use crate::structs::WhatsappSource;
 use fizzy_commons::shared_structs::MessageLog;
 use log::{debug, error};
 
+use crate::redis::classification::{get_label, remove_label};
 use crate::redis::part_register::create_part_request;
+use crate::structs::classification::Label;
 use crate::structs::part_request::{
     PartRequest, RequestDetailsBuilder, RequestorBuilder, VehicleDataBuilder,
 };
 
 pub fn whatsapp_reference_exists(tracker_id: &str) -> bool {
     false
+}
+
+pub fn remove_label_tree(request_id: &str, label_id: &str, labels: &mut Vec<Label>) -> Result<(), String>{
+    for label in labels.clone(){
+        if label.parent == label_id {
+            debug!("Checking if {} is child of {}", label.id, label_id );
+            let res = remove_label(request_id, &label.id);
+
+            if res.is_err() {
+                let err = format!("Error deleting label: {}", res.unwrap_err());
+                error!("{}", err);
+                return Err(err)
+            }
+
+            let mut updated_list: Vec<Label> = labels.iter()
+            .filter(|x| &x.id != &label.id).cloned().collect::<Vec<Label>>();
+            remove_label_tree(request_id, &label.id, &mut updated_list);
+        }
+    }
+
+    let res = remove_label(request_id, &label_id);
+
+    if res.is_err() {
+        let err = format!("Error deleting label: {}", res.unwrap_err());
+        error!("{}", err);
+        return Err(err)
+    }
+
+    Ok(())
+
+}
+
+
+pub fn retrieve_label_tree(id: &str, labels: &mut Vec<Label>) -> Result<(), ()>{
+    debug!("Retrieve label tree {id}");
+    // Check if label exists
+    if id == "0" {
+        return Ok(());
+    }
+
+    if !Label::exists(id) {
+        return Err(());
+    }
+
+    // Get label
+    let parent_label: Label = Label::get(id);
+
+    // Add label to label list
+    labels.push(parent_label.clone());
+
+    if parent_label.parent != "0" {
+        retrieve_label_tree(&parent_label.parent, labels);
+    }
+
+    Ok(())
 }
 
 fn set_request_details(
