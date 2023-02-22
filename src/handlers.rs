@@ -1,5 +1,5 @@
 use crate::redis::classification::{
-    append_label, get_label_childs, get_pending_classification_requests, remove_label, get_request_labels
+    append_label, get_label_childs, get_pending_classification_requests, remove_label, get_request_labels 
 };
 use crate::redis::part_register::create_part_request;
 use fizzy_commons::shared_structs::{MessageLog, ModifiedReference, StandardResponse};
@@ -11,6 +11,10 @@ use crate::structs::part_request::{
     PartRequest, RequestDetailsBuilder, RequestorBuilder, VehicleDataBuilder,
 };
 use crate::structs::WhatsappSource;
+
+pub fn get_all_labels() -> Result<Vec<Label>, String>{
+    crate::redis::classification::get_all_labels()
+}
 
 pub fn get_labels(label_id: String) -> Result<Vec<Label>, String> {
     // Don't verify if looking for parent label as label with id 0 doesn't exist
@@ -115,7 +119,7 @@ pub fn update_request_labels(
     }
 
     // Get label to check parent
-    let label = Label::get(&label_id);
+    let label = Label::get(&label_id).expect("Failed to get label:");
     debug!("label: {label:?}");
     now = Instant::now();
     let mut label_list: Vec<Label> = vec![label.clone()];

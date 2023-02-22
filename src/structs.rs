@@ -324,6 +324,7 @@ impl Source for WhatsappSource {
 }
 
 pub mod classification {
+    use crate::helpers::print_type_name;
     use crate::redis::classification::{get_label, get_request_labels};
     use crate::redis::common::key_exists;
     use log::{debug, error};
@@ -354,21 +355,25 @@ pub mod classification {
             key_exists(&key)
         }
 
-        pub fn get(id: &str) -> Self {
+        pub fn get(id: &str) -> Result<Self, String> {
             get_label(id)
         }
     }
 
     impl FromRedisValue for Label {
         fn from_redis_values(items: &[Value]) -> redis::RedisResult<Vec<Self>> {
+            debug!("Value type received: {:?}", items);
             let mut parsed_values: Vec<Self> = vec![];
 
             for item in items {
                 if let Value::Bulk(val) = item {
+                    debug!("item: {:?}", &item);
+                    debug!("val: {:?}", &val);
                     let value: RedisResult<Label> =
-                        from_redis_value(&Value::Bulk(vec![item.clone()]));
+                        from_redis_value(item);
 
                     if value.is_err() {
+                        error!("{}", value.as_ref().unwrap_err());
                         return Err(RedisError::from(std::io::Error::new(
                             ErrorKind::Other,
                             "Value couldn't be parsed",
@@ -392,19 +397,24 @@ pub mod classification {
         }
 
         fn from_redis_value(v: &redis::Value) -> redis::RedisResult<Self> {
+            debug!("v: {v:?}");
             if let Value::Bulk(register) = v {
                 let mut fields: HashMap<String, String> = HashMap::new();
                 let mut verification_set: HashSet<String> = HashSet::new();
 
+
                 // Parse bulk into key-val hashmap
                 let mut param_name = "".to_string();
                 for (index, elem) in register.iter().enumerate() {
+                    
+                    debug!("elem: {:?}", elem);
                     let string_val = match elem {
                         Value::Data(val) => String::from_utf8(val.clone()),
                         _ => {
+                            let err = format!("Unexpected Value type received: {}", print_type_name(&elem));
                             return Err(RedisError::from(std::io::Error::new(
                                 ErrorKind::Other,
-                                "Unexpected Value type received",
+                                err,
                             )));
                         }
                     }
@@ -1021,3 +1031,32 @@ pub mod constants {
         map
     }
 }
+
+#[cfg(test)]
+mod tests{
+    use crate::redis::classification::{get_label, get_all_labels};
+    use crate::structs::classification::Label;
+
+    // Passes if label exists
+    #[test]
+    pub fn get_single_label(){
+       let label = get_label("1");
+        assert!(label.is_ok())
+    }
+
+    #[test]
+    pub fn get_non_existing_label(){
+
+       let label = get_label("243dff");
+        assert!(label.is_err())
+    }
+
+
+    #[test]
+    pub fn get_labels_search(){
+        let labels: Result<Vec<Label>, String> = get_all_labels();
+        assert!(labels.is_ok());
+    }
+
+}
+

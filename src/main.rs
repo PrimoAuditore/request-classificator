@@ -3,6 +3,7 @@ use crate::structs::classification::Label;
 use actix_web::middleware::Logger;
 use actix_web::{delete, get, post, put, web, App, HttpResponse, HttpServer, Responder};
 use fizzy_commons::shared_structs::MessageLog;
+use handlers::get_all_labels;
 use log::debug;
 
 mod handlers;
@@ -22,11 +23,23 @@ async fn main() -> std::io::Result<()> {
             .service(pending_requests)
             .service(append_label)
             .service(remove_label)
+            .service(get_labels)
             .service(get_child_labels)
     })
     .bind(("0.0.0.0", 8080))?
     .run()
     .await
+}
+
+#[get("/label/all")]
+async fn get_labels() -> impl Responder{
+
+    let response = handlers::get_all_labels();
+
+    match response {
+        Ok(response) => HttpResponse::Ok().body(serde_json::to_string(&response).unwrap()),
+        Err(err) => HttpResponse::InternalServerError().body(serde_json::to_string(&err).unwrap()),
+    }
 }
 
 #[post("/incoming")]

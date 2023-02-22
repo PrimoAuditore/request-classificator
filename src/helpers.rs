@@ -44,6 +44,11 @@ pub fn remove_label_tree(request_id: &str, label_id: &str, labels: &mut Vec<Labe
 }
 
 
+pub fn print_type_name<T>(_: &T) -> String{
+    std::any::type_name::<T>().to_string()
+}
+
+
 pub fn retrieve_label_tree(id: &str, labels: &mut Vec<Label>) -> Result<(), ()>{
     debug!("Retrieve label tree {id}");
     // Check if label exists
@@ -56,7 +61,7 @@ pub fn retrieve_label_tree(id: &str, labels: &mut Vec<Label>) -> Result<(), ()>{
     }
 
     // Get label
-    let parent_label: Label = Label::get(id);
+    let parent_label: Label = Label::get(id).expect("Failed to get label: ");
 
     // Add label to label list
     labels.push(parent_label.clone());

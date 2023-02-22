@@ -14,4 +14,4 @@ redis = {version="0.22.1", features = ["streams", "json"]}
 log = "0.4.0"
 env_logger = "0.10.0"
 uuid = {version="1.2.2", features=["fast-rng", "v4"]}
-fizzy_commons = {git = "ssh://git@github.com/PrimoAuditore/fizzy-commons.git",  tag="v2.5.0"}
+fizzy_commons = {git = "ssh://git@github.com/PrimoAuditore/fizzy-commons.git",  tag="v2.6.0"}

@@ -8,6 +8,24 @@ pub mod classification {
     use log::{debug, error};
     use redis::{Commands, RedisResult, Value};
 
+    pub fn get_all_labels() -> Result<Vec<Label>, String>{
+        
+        debug!("Getting all labels");
+        let mut query: QueryBuilder<Vec<Label>> = QueryBuilder::default();
+
+        query
+            .index("label-parent-search".to_string());
+
+        let mut client = create_client().unwrap();
+        let res = query.all(&client);
+
+        if res.is_err() {
+            return Err(res.unwrap_err().to_string());
+        }
+
+        Ok(res.unwrap())
+    }
+
     pub fn get_pending_classification_requests() -> Result<Vec<PartRequest>, String> {
         // TODO: Think on a concurrent solution
         let mut query: QueryBuilder<Vec<PartRequest>> = QueryBuilder::default();
@@ -121,12 +139,12 @@ pub mod classification {
         debug!("Found labels ids: {:?}", res.as_ref().unwrap());
 
         for label in res.unwrap(){
-            list.push(Label::get(&label))
+            list.push(Label::get(&label).expect("Failed to get label: "))
         }
 
         Ok(list)
     }
-    pub fn get_label(id: &str) -> Label {
+    pub fn get_label(id: &str) -> Result<Label, String> {
         let mut client = create_client().unwrap();
         let mut con = client.get_connection().unwrap();
 
@@ -135,14 +153,16 @@ pub mod classification {
         let res: RedisResult<Label> = con.hgetall(&key);
 
         if res.is_err() {
-            error!(
+            let err = format!(
                 "err getting label {}: {}",
                 &key,
                 res.as_ref().unwrap_err().to_string()
             );
+            error!("{}",err);
+            return Err(err) 
         }
 
-        res.unwrap()
+       Ok(res.unwrap()) 
     }
 }
 
