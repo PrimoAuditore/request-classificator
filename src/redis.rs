@@ -8,6 +8,27 @@ pub mod classification {
     use log::{debug, error};
     use redis::{Commands, RedisResult, Value};
 
+    pub fn year_selection(request_id: &str, year: &str) -> Result<(), String>{
+
+        let mut client = create_client().unwrap();
+        let mut con = client.get_connection().unwrap();
+
+        let key = format!("part-request:{request_id}:vehicle");
+        let res: RedisResult<Value> = con.hset(key, "year", year);
+
+        if res.is_ok() { Ok(()) }else {Err(String::from(res.unwrap_err().to_string()))}
+    }
+
+    pub fn complete_request(request_id: &str) -> Result<(), String>{
+        let mut client = create_client().unwrap();
+        let mut con = client.get_connection().unwrap();
+
+        let key = format!("part-request:{request_id}");
+        let res: RedisResult<Value> = con.hset(key, "classified", "DONE");
+
+        if res.is_ok() { Ok(()) }else {Err(String::from(res.unwrap_err().to_string()))}
+    }
+
     pub fn get_all_labels() -> Result<Vec<Label>, String>{
         
         debug!("Getting all labels");
@@ -343,6 +364,37 @@ pub mod part_register {
 
         debug!("Requestor added succesfully {}", &key);
         Ok(())
+    }
+
+    pub fn get_request_vehicle(request_id: &str) -> Result<VehicleData, String>{
+        let client = create_client().unwrap();
+        let mut con = client.get_connection().unwrap();
+
+        let key = format!("part-request:{request_id}:vehicle");
+        let res: RedisResult<VehicleData> = con.hgetall(&key);
+
+        if res.is_err(){
+            let err = format!("Error obtaining part request vehicle with id {}: {}", &key, res.as_ref().unwrap_err().to_string());
+            error!("{}", &err);
+            return Err(err);
+        }
+
+        Ok(res.unwrap())
+    }
+    pub fn get_request_by_id(request_id: &str) -> Result<PartRequest, String>{
+        let client = create_client().unwrap();
+        let mut con = client.get_connection().unwrap();
+
+        let key = format!("part-request:{request_id}");
+        let res: RedisResult<PartRequest> = con.hgetall(&key);
+
+        if res.is_err(){
+            let err = format!("Error obtaining part request with id {}: {}", &key, res.as_ref().unwrap_err().to_string());
+            error!("{}", &err);
+            return Err(err);
+        }
+
+        Ok(res.unwrap())
     }
 }
 

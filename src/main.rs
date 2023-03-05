@@ -1,9 +1,10 @@
-use crate::request_structs::LabelUpdate;
+use crate::request_structs::{LabelUpdate, YearSelection};
+use actix_cors::Cors;
 use crate::structs::classification::Label;
 use actix_web::middleware::Logger;
 use actix_web::{delete, get, post, put, web, App, HttpResponse, HttpServer, Responder};
 use fizzy_commons::shared_structs::MessageLog;
-use handlers::get_all_labels;
+use handlers::{get_all_labels};
 use log::debug;
 
 mod handlers;
@@ -17,9 +18,18 @@ async fn main() -> std::io::Result<()> {
     env_logger::init();
 
     HttpServer::new(|| {
+    let cors = Cors::default()
+        .allow_any_origin()
+        .allowed_methods(vec!["GET", "POST", "DELETE", "PUT"])
+        .max_age(3600);
+
         App::new()
             .wrap(Logger::new("%U"))
+            .wrap(cors)
             .service(incoming_messages)
+            .service(get_request)
+            .service(year_selection)
+            .service(classification_completed)
             .service(pending_requests)
             .service(append_label)
             .service(remove_label)
@@ -32,8 +42,7 @@ async fn main() -> std::io::Result<()> {
 }
 
 #[get("/label/all")]
-async fn get_labels() -> impl Responder{
-
+async fn get_labels() -> impl Responder {
     let response = handlers::get_all_labels();
 
     match response {
@@ -41,6 +50,7 @@ async fn get_labels() -> impl Responder{
         Err(err) => HttpResponse::InternalServerError().body(serde_json::to_string(&err).unwrap()),
     }
 }
+
 
 #[post("/incoming")]
 async fn incoming_messages(log: web::Json<MessageLog>) -> impl Responder {
@@ -90,17 +100,38 @@ async fn append_label(path: web::Path<String>, label: web::Query<LabelUpdate>) -
     }
 }
 
-//#[put("/request/{request_id}/done")]
-//async fn classification_completed(path: web::Path<String>) -> impl Responder {
-//    let request_id = String::from(&path.into_inner());
-//    let response = handlers::classification_completed(request_id);
+#[put("/request/{request_id}/done")]
+async fn classification_completed(path: web::Path<String>) -> impl Responder {
+    let request_id = String::from(&path.into_inner());
+    let response = handlers::classification_completed(request_id);
 
-//    match response {
-//        Ok(ok) => HttpResponse::Created().body(serde_json::to_string(&ok).unwrap()),
-//        Err(err) => HttpResponse::InternalServerError().body(serde_json::to_string(&err).unwrap()),
-//    }
-//}
+    match response {
+        Ok(_) => HttpResponse::Created().body(""),
+        Err(err) => HttpResponse::InternalServerError().body(serde_json::to_string(&err).unwrap()),
+    }
+}
 
+#[put("/request/{request_id}/year")]
+async fn year_selection(path: web::Path<String>, year: web::Query<YearSelection>) -> impl Responder {
+    let request_id = String::from(&path.into_inner());
+    let response = handlers::select_year(request_id, &year.year_selected);
+
+    match response {
+        Ok(_) => HttpResponse::Created().body(""),
+        Err(err) => HttpResponse::InternalServerError().body(serde_json::to_string(&err).unwrap()),
+    }
+}
+
+#[get("/request/{request_id}")]
+async fn get_request(path: web::Path<String>) -> impl Responder {
+    let request_id = String::from(&path.into_inner());
+    let response = handlers::get_request(&request_id);
+
+    match response {
+        Ok(ok) => HttpResponse::Created().body(serde_json::to_string(&ok).unwrap()),
+        Err(err) => HttpResponse::InternalServerError().body(serde_json::to_string(&err).unwrap()),
+    }
+}
 #[delete("/request/{request_id}/labels")]
 async fn remove_label(path: web::Path<String>, label: web::Query<LabelUpdate>) -> impl Responder {
     debug!("{path:?} -> {label:?}");

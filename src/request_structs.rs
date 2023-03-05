@@ -4,3 +4,8 @@ use serde::{Deserialize, Serialize};
 pub struct LabelUpdate {
     pub label_id: String,
 }
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct YearSelection {
+    pub year_selected: String,
+}

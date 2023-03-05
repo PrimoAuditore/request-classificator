@@ -1,18 +1,19 @@
 use crate::redis::classification::{
-    append_label, get_label_childs, get_pending_classification_requests, remove_label, get_request_labels 
+    append_label, complete_request, get_label_childs, get_pending_classification_requests,
+    get_request_labels, remove_label, year_selection,
 };
-use crate::redis::part_register::create_part_request;
+use crate::redis::part_register::{create_part_request, get_request_by_id};
 use fizzy_commons::shared_structs::{MessageLog, ModifiedReference, StandardResponse};
 use log::{debug, error};
 
-use crate::helpers::{process_new_request, retrieve_label_tree, remove_label_tree};
+use crate::helpers::{process_new_request, remove_label_tree, retrieve_label_tree};
 use crate::structs::classification::Label;
 use crate::structs::part_request::{
     PartRequest, RequestDetailsBuilder, RequestorBuilder, VehicleDataBuilder,
 };
 use crate::structs::WhatsappSource;
 
-pub fn get_all_labels() -> Result<Vec<Label>, String>{
+pub fn get_all_labels() -> Result<Vec<Label>, String> {
     crate::redis::classification::get_all_labels()
 }
 
@@ -68,7 +69,6 @@ pub fn remove_request_labels(
     debug!("assigned labels: {:?}", assigned_labels.as_ref().unwrap());
     let res = remove_label_tree(&request_id, &label_id, &mut assigned_labels.unwrap());
 
-
     if res.is_err() {
         response.errors = Some(vec![res.unwrap_err()]);
         return Err(response);
@@ -77,8 +77,43 @@ pub fn remove_request_labels(
     Ok(response)
 }
 
-pub fn classification_completed(request_id: String) {
-    //PartRequest
+pub fn get_request(request_id: &str) -> Result<PartRequest, String> {
+    let part_request_res = PartRequest::get_request(request_id);
+
+    if part_request_res.is_err() {
+        return Err(part_request_res.unwrap_err());
+    }
+
+    let mut part_request = part_request_res.unwrap();
+
+    let vehicle_data = part_request.get_vehicle_data();
+
+    if vehicle_data.is_err() {
+        return Err(vehicle_data.unwrap_err());
+    }
+
+    Ok(part_request)
+}
+
+pub fn select_year(request_id: String, year: &str) -> Result<(), String> {
+    let res = year_selection(&request_id, year);
+
+    if res.is_err() {
+        error!("{}", res.as_ref().unwrap_err());
+        return Err(res.as_ref().unwrap_err().to_string());
+    }
+
+    Ok(())
+}
+pub fn classification_completed(request_id: String) -> Result<(), String> {
+    let res = complete_request(&request_id);
+
+    if res.is_err() {
+        error!("{}", res.as_ref().unwrap_err());
+        return Err(res.as_ref().unwrap_err().to_string());
+    }
+
+    Ok(())
 }
 
 pub fn update_request_labels(
@@ -133,7 +168,7 @@ pub fn update_request_labels(
 
     now = Instant::now();
     // Append label to request
-    for iter_label in label_list{
+    for iter_label in label_list {
         let res = append_label(&request_id, &iter_label.id);
 
         if res.is_err() {
@@ -144,8 +179,6 @@ pub fn update_request_labels(
 
     elapsed = now.elapsed();
     debug!("Append label Elapsed: {:.2?}", elapsed);
-
-
 
     Ok(response)
 }
