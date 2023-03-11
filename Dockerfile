@@ -9,5 +9,5 @@ RUN --mount=type=ssh cargo build --release
 
 FROM debian:11-slim
 WORKDIR /app
-COPY --from=build /app/target/release/whatsapp-manager ./whatsapp-manager
-CMD ["./whatsapp-manager"]
+COPY --from=build /app/target/release/request-classificator ./request-classificator
+CMD ["./request-classificator"]
