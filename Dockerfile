@@ -5,7 +5,7 @@ ENV REDIS_URL=""
 
 WORKDIR /app
 COPY . .
-RUN cargo build --release
+RUN --mount=type=ssh cargo build --release
 
 FROM debian:11-slim
 WORKDIR /app
