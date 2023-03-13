@@ -3,8 +3,10 @@ use crate::redis::classification::{
     get_request_labels, remove_label, year_selection,
 };
 use crate::redis::part_register::{create_part_request, get_request_by_id};
+use fizzy_commons::redis::client::create_client;
 use fizzy_commons::shared_structs::{MessageLog, ModifiedReference, StandardResponse};
 use log::{debug, error};
+use redis::Commands;
 
 use crate::helpers::{process_new_request, remove_label_tree, retrieve_label_tree};
 use crate::structs::classification::Label;
@@ -111,6 +113,18 @@ pub fn classification_completed(request_id: String) -> Result<(), String> {
     if res.is_err() {
         error!("{}", res.as_ref().unwrap_err());
         return Err(res.as_ref().unwrap_err().to_string());
+    }
+
+    // Notify classification completed
+    let client = create_client().unwrap();
+    let con = client.get_connection().unwrap();
+
+    let publish_message  = con
+        .publish("part-classified", &request_id);
+
+    if publish_message.is_err(){
+        return Err(format!("Error publishing message to part-classified channel "));
+
     }
 
     Ok(())
