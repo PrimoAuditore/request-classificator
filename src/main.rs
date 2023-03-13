@@ -34,11 +34,17 @@ async fn main() -> std::io::Result<()> {
             .service(append_label)
             .service(remove_label)
             .service(get_labels)
+            .service(health)
             .service(get_child_labels)
     })
     .bind(("0.0.0.0", 8080))?
     .run()
     .await
+}
+
+#[get("/health")]
+async fn health() -> impl Responder {
+    "OK"
 }
 
 #[get("/label/all")]
