@@ -828,6 +828,8 @@ pub mod part_request {
                 }
 
 
+                let mut iter = register.iter();
+
                 let mut fields: HashMap<String, String> = HashMap::new();
                 let mut verification_set: HashSet<String> = HashSet::new();
 
