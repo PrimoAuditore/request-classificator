@@ -117,15 +117,19 @@ pub fn classification_completed(request_id: String) -> Result<(), String> {
 
     // Notify classification completed
     let client = create_client().unwrap();
-    let con = client.get_connection().unwrap();
+    let mut con = client.get_connection().unwrap();
 
-    let publish_message  = con
-        .publish("part-classified", &request_id);
+    let log = MessageLog {
+        register_id: request_id,
+        origin_system: "5".to_string(),
+        destination_systems: vec!["6".to_string()],
+        phone_number: "".to_string(),
+        origin: "INCOMING".to_string(),
+    };
 
-    if publish_message.is_err(){
-        return Err(format!("Error publishing message to part-classified channel "));
-
-    }
+    let publish_message: () = con
+        .publish("part-classified", serde_json::to_string(&log).unwrap())
+        .expect("couldnt publish to part-classified channel");
 
     Ok(())
 }
