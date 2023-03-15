@@ -818,13 +818,24 @@ pub mod part_request {
             Ok(parsed_values)
         }
         fn from_redis_value(v: &redis::Value) -> RedisResult<Self> {
+            debug!("{v:?}");
             if let Value::Bulk(register) = v {
+
+                let mut iter = register.iter();
+
+                if iter.next().is_none(){
+                    return Err((redis::ErrorKind::TypeError, "No data received from key").into());
+                }
+
+
+                let mut iter = register.iter();
+
                 let mut fields: HashMap<String, String> = HashMap::new();
                 let mut verification_set: HashSet<String> = HashSet::new();
 
                 // Parse bulk into key-val hashmap
                 let mut param_name = "".to_string();
-                for (index, elem) in register.iter().enumerate() {
+                for (index, elem) in iter.enumerate() {
                     println!("{elem:?}");
                     let string_val = match elem {
                         Value::Data(val) => String::from_utf8(val.clone()),
@@ -841,6 +852,8 @@ pub mod part_request {
                         fields.insert(param_name.to_string(), string_val);
                     }
                 }
+
+                debug!("{fields:?}");
 
                 let mut request: PartRequest = PartRequest::new("", "", "", "", "");
                 // Verifiy set is empty
@@ -1168,6 +1181,7 @@ mod tests {
         let label = get_label("243dff");
         assert!(label.is_err())
     }
+
 
     #[test]
     pub fn get_labels_search() {
